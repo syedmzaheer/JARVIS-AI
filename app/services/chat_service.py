@@ -176,3 +176,55 @@ class ChatService:
 # PROCESS MESSAGES (GENERAL AND REALTIME)
 # ==========================================================================================================================
 
+    def process_message(self, session_id: str, user_message: str) -> str:
+        """
+        Handle one general chat message: add user message, call Groq (no web search), add reply, return it.
+        """
+        self.add_message(session_id, "user", user_message)
+        chat_history = self.format_history_for_llm(session_id, exclude_last=True)
+        response = self.groq_service.get_response(question=user_message, chat_history=chat_history)
+        self.add_message(session_id, role="assistant", content=response)
+        return response
+    
+    def process_realtime_message(self, session_id: str, user_message: str) -> str:
+        """
+        Handle one realtime message: add user message, call realtime service (Tavily + Groq), add reply, return it.
+        Uses the same session as process_message so history is shared. Raises ValueError if realtime_service is None.
+        """
+        if not self.realtime_service:
+            raise ValueError("Realtime service is not initialized. Cannot process realtime querries.")
+        self.add_message(session_id, "user", user_message)
+        chat_history = self.format_history_for_llm(session_id, exclude_last=True)
+        response = self.realtime_service.get_response(question=user_message, chat_history=chat_history)
+        self.add_message(session_id, "assistant", response)
+        return response
+    
+# ==========================================================================================================================
+# PERSISTS SESSIONS TO DISK
+# ==========================================================================================================================
+
+    def save_chat_session(self, session_id: str):
+        """
+        Write this session's messages to database/chat_data/chat_{safe_session_id}.json.
+
+        Called after each message so the conversation is persisted. The vector store
+        is rebuilt on starup from these files, so new chats are included after restart.
+        If the session is missing or empty we do nothing. On write error we only log.
+        """
+        if session_id not in self.sessions or not self.sessions[session_id]:
+            return
+        
+        messages = self.sessions[session_id]
+        safe_session_id = session_id.replace("-", "").replace(" ", "")
+        filename = f"chat_{safe_session_id}.json"
+        filepath = CHAT_DATA_DIR / filename
+        chat_dict = {
+            "session_id": session_id,
+            "messages": [{"role":msg.role, "content": msg.content} for msg in messages]
+        }
+        
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(chat_dict, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error("Error saving session %s to disk: %s", session_id, e)
