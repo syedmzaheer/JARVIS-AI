@@ -99,3 +99,10 @@ class GroqService:
       - All requests share the same round-robin counter (class-level)
     """
 
+    # Class-level counter shared across all instances (GroqService and RealtimeGroqService) 
+    # This ensure round-robin works across both /chat and /chat/realtime endpoints.
+    _shared_key_index = 0
+    _lock = None  # Will be set to threading. Lock if threading is needed (currently single-threaded)
+
+    def __init__(self, vector_store_service: VectorStoreService):
+        
