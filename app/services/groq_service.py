@@ -48,4 +48,54 @@ logger = logging.getLogger("J.A.R.V.I.S.")
 # HELPER: ESCAPE CURLY BRACES FOR LANGCHAIN
 # ==========================================================================================================================
 # LangChain prompt templates use {variable_name}. If learning data or chat
-# 
+# content contains { or}, the remplate engine can break. Doubling them 
+# makes then literal in the final string.
+
+def escape_curly_braces(text: str) -> str:
+    """
+    Double every { and } so LangChain does not treat them as template variables. 
+    Learning data or chat content might contain { or }; without escaping, invoke() can fail.
+    """
+    if not text:
+        return text
+    return text.replace("{", "{{").replace("}", "}}")
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """
+    Return True if the exception indicates a Groq rate limit (e.g. 429, tokens per day).
+    Used for loffing; actual fallback tries the next key on any failure when multiple kays exist.
+    """
+    msg = str(exc).lower()
+    return "429" in str(exc) or "rate limit" in msg or "tokens per day" in msg
+
+
+def _mask_api_key(key: str) -> str:
+    """
+    Mask an API key for safe logging: Shows first 8 and last 4 characters, masks the middle.
+    Example: "sk-12345678-abcdef1234567890" -> "sk-12345678-****-****-****-****-****-****-****-****-****-****-****-****-****-1234"
+    """
+    if not key or len(key) < 12:
+        return "***masked***"
+    return f"{key[:8]}...{key[-4:]}"
+
+
+# ==========================================================================================================================
+# GROQ SERVICE CLASS
+# ==========================================================================================================================
+
+class GroqService:
+    """
+    General chat: recieves context from the vector store and calls the Groq LLM.
+    Supports multiple API keys: each request uses the next key in rotation (one-ny0one),
+    and if that key fails, the server tries the next key until one succeeds or all fails.
+    
+    ROUND-ROBIN BEHAVIOUR:
+      - Request 1 uses key 0 (first key)
+      - Request 2 uses key 1 (second key)
+      - Request 3 uses key 2 (third key)
+      - After all keys are used, cycles back to key o
+      - If a key fails (rate limit error), tries the next key in sequence
+      - All requests share the same round-robin counter (class-level)
+    """
+
