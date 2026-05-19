@@ -104,4 +104,75 @@ class ChatService:
     
     def get_or_create_session(self, session_id: Optional[str] = None) -> str:
         """
-        Return"""
+        Return a session ID and ensure that session existx in memory.
+        
+        - If session_id is None: create a new session with a new UUID and return it.
+        - If session_id is provided: validate it; if it's in self.sessions return it;
+          else try to load from disk; if not found , create a new session with that ID.
+        Raises ValueError if session_id is invalid (empty. path traversal, or too long)
+        """
+        if not session_id:
+            new_session_id = str(uuid.uuid4())
+            self.sessions[new_session_id] = []
+            return new_session_id
+        
+        if not self.validate_session_id(session_id):
+            raise ValueError(
+                f"Invalid session_id: {session_id}. Session ID must be non-empty, "
+                "not contain path traversal characters, and be under 255 characters."
+            )
+        
+        if session_id in self.sessions:
+            return session_id
+        
+        if self.load_session_from_disk(session_id):
+            return session_id
+        
+        # New session with this ID (e.g. client sent an ID that was never saved).
+        self.sessions[session_id] = []
+        return session_id
+    
+# ==========================================================================================================================
+# MESSAGESE AND HISTORY FORMATTING
+# ==========================================================================================================================
+
+    def add_message(self, session_id: str, role: str, content: str):
+        """Append one message (user or assistant) to the session's message list. Creates Session if missing."""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+        self.sessions[session_id].append(ChatMessage(role=role, content=content))
+
+    def get_chat_history(self, session_id: str) -> List[ChatMessage]:
+        """Return the list of ChatMessage for this session (chronological). Empty list if session unknown."""
+        return self.sessions.get(session_id, [])
+    
+    def format_history_for_llm(self, session_id: str, exclude_last: bool = False) -> List[tuple]:
+        """
+        Build a list of (user-text, assistant_text) pairs for the LLM prompt. 
+        
+        We only include complete pairs and cap at MAX_CHAT_HISTORY_TURNS (e.g. 20)
+        so the prompt does not grow unbounded. If exclude_last is True we drop the 
+        last message (the current user message that we are about to reply to).
+        """
+        messages = self.get_chat_history(session_id)
+        history = []
+        # If exclude_last, we skip the last message (the curent user message we are about to reply to).
+        messages_to_process = messages[:-1] if exclude_last and messages else messages
+        i = 0
+        while i < len(messages_to_process) - 1:
+            user_msg = messages_to_process[i]
+            ai_msg = messages_to_process[i + 1]
+            if user_msg.role == "user" and ai_msg.role == "assistant":
+                history.append((user_msg.content, ai_msg.content))
+                i += 2  
+            else:
+                i += 1
+            # Keep only the most recent turns so the prompt does not exceed token limits.
+            if len(history) > MAX_CHAT_HISTORY_TURNS:
+                history = history[-MAX_CHAT_HISTORY_TURNS:]
+            return history
+        
+# ==========================================================================================================================
+# PROCESS MESSAGES (GENERAL AND REALTIME)
+# ==========================================================================================================================
+
