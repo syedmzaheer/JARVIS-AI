@@ -105,4 +105,29 @@ class GroqService:
     _lock = None  # Will be set to threading. Lock if threading is needed (currently single-threaded)
 
     def __init__(self, vector_store_service: VectorStoreService):
-        
+        """
+        Create one Groq LLM Client per API key and store the vector store for retrieval.
+        self.llms[i] corresponds to GROQ_API_KEYS[i]; request N uses key at index (N % len(keys)).
+        """
+        if not GROQ_API_KEYS:
+            raise ValueError(
+                "No Groq API keys configured. Set GROQ_API_KEY (and optionally GROQ_API_KEY_2, GROQ_API_KEY_3, ...) in .env"
+            )
+        # One CHatGroq instance per key; each request will use one of these in rotaion.
+        self.llms = [
+            ChatGroq(
+                groq_api_key=key,
+                model_name=GROQ_MODEL,
+                temperature=0.8
+            )
+            for key in GROQ_API_KEYS
+        ]
+        self.vector_store_service = vector_store_service
+        logger.info(f"Initialized GroqService with {len(GROQ_API_KEYS)} API key(s)")
+
+    def _invoke_llm(
+        self,
+        prompt: ChatPromptTemplate,
+        messages: list,
+        question: str,
+    ) -> str:
