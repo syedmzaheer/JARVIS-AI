@@ -131,3 +131,25 @@ class GroqService:
         messages: list,
         question: str,
     ) -> str:
+        """
+        Call the LLM using the next key in roation; on failure try the next key until one succeeds.
+        
+          - Round-robin: the request uses the key at index (_shared_key_index % n), then we increment
+            _shared_key_index so the next request uses the next key. ALl instances share the same counter.
+          - Fallback; if the chosen key raises (e.g. 429 rate limit), we try the next key, then the next,
+            until one returns sucessfully or we have tried all keys.
+        Returns response.content. Raises if all key fails.
+        """
+        n = len(self.llms)
+        # Which key to try first for this request (round-robin: request 1 -> key 0. request 2 -> key 1, ...)
+        # Use class-level counter so all instances (GrpqService and RealtimeGroqService) share the same rotation.
+        start_i = GroqService._shared_key_index % n
+        current_key_index = GroqService._shared_key_index 
+        GroqService._shared_key_index += 1
+
+        # Log which key we're using (masked for security)
+        masked_key = _mask_api_key(GROQ_API_KEYS[start_i])
+        logger.info(f"Using API key #{start_i + 1}/{n} (round-robin index: {current_key_index}): {masked_key}")
+
+        last_exc = None
+        
