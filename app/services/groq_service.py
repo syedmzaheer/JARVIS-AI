@@ -182,3 +182,42 @@ class GroqService:
         logger.error(f"All API keys failed. Tried keys: {masked_all_key}")
         raise Exception(f"Error getting response from Groq: {str(e)}") from last_exc
     
+    def get_response(
+        self,
+        question: str,
+        chat_history: Optional[List[dict]] = None
+    ) -> str:
+        """
+        Return the assistant's reply to the question (general chat, no web search).
+        Retrieves context from the vector store, builds the propmt, then calls _invoke_llm
+        which uses the next API key in rotation and falls back to other keys on failure.
+        """
+        try:
+            context = ""
+            try:
+                retriever = self.vector_store_service.get_retriever(k=10)
+                context_docs = retriever.invoke(question)
+                context = "\n".join([doc.page_content for doc in context_docs]) if context_docs else ""
+            except Exception as retrieval_err:
+                logger.warrning("Vector store retrieval failed, using empty content: %s", retrieval_err)
+
+            # Build system message with current time and retrieved context
+            time_info = get_time_information()
+            system_message = JARVIS_SYSTEM_PROMPT +f"\n\nCurrent time and date: {time_info}"
+            if context:
+                system_message += f"\n\nRelevant context from your learning data and past conversations:\n{escape_curly_braces(context)}"
+            
+            prompt = ChatPromptTemplate.from_messages([
+                    ("system", system_message),
+                    MessagePlaceholder(variable_name="history"),
+                    ("human", "{question}"),
+                ])
+            messages = []
+            if chat_history:
+                for human_msg, ai_msg in chat_history:
+                    messages.append(HumanMessage(content=human_msg))
+                    messages.append(AIMessage(content=ai_msg))
+
+            return self._invoke_llm(prompt, messages, question)
+        except Exception as e:
+            raise Exception(f"Error getting response from Groq: {str(e)}") from e
