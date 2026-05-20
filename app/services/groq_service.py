@@ -152,4 +152,33 @@ class GroqService:
         logger.info(f"Using API key #{start_i + 1}/{n} (round-robin index: {current_key_index}): {masked_key}")
 
         last_exc = None
-        
+        keys_tried = []
+        ## Try each key in sequence, starting from start_i, until one succeeds or all fail
+        for j in range(n):
+            i = (start_i + j) % n
+            keys_tried.append(i)
+            try:
+                # Build chain with this key's LLM and invoke once.
+                chain = prompt | self.llms[i]
+                response = chain.invoke({"history": messages, "question": question})
+                # Log success if we had to fallback to a different key.
+                if j > 0:
+                    masked_success_key = _mask_api_key(GROQ_API_KEYS[i])
+                    logger.info(f"Fallback Successful: API key #{i + 1}/{n}: succeeded: {masked_success_key}")
+                return response.content
+            except Exception as e:
+                last_exc = e
+                masked_failed_key = _mask_api_key(GROQ_API_KEYS[i])
+                if _is_rate_limit_error(e):
+                    logger.warning(f"API key #{i + 1}/{n}: rate limited: {masked_failed_key}")
+                else:
+                    logger.error(f"API key #{i + 1}/{n}: failed: {masked_failed_key} - {str(e)[:100]}")
+                # If we have more than one key, try the next one; otherwise raise immediately.
+                if n > 1:
+                    continue
+                raise Exception(f"Error getting response from Groq: {str(e)}") from e
+        # All keys were tried and all failed; raise the last exception.
+        masked_all_key = ", ".join([_mask_api_key(GROQ_API_KEYS[i]) for i in keys_tried])
+        logger.error(f"All API keys failed. Tried keys: {masked_all_key}")
+        raise Exception(f"Error getting response from Groq: {str(e)}") from last_exc
+    
