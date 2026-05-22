@@ -45,4 +45,22 @@ logger = logging.getLogger("J.A.R.V.I.S.")
 
 class RealtimeGroqService(GroqService):
     """
+    Same as GroqService but runs a Tavily web search first and adds the results 
+    to the system message. If Tavily is missing or fails, we still call Groq with
+    no search results (user gets and answer without real time data).
     """
+
+    def __init__(self, vector_store: VectorStoreService):
+        super().__init__(vector_store)
+        tavily_api_key = os.getenv("TAVILY_API_KEY", "")
+        if tavily_api_key:
+            self.tavily_client = TavilyClient(api_key=tavily_api_key)
+            logger.info("Tavily Search client initialized successfully.")
+        else:
+            self.tavily_client = None
+            logger.warning("TAVILY_API_KEY not set. Realtime Search will be disabled.")
+
+            def search_tavily(self, query: str, int = 5) -> str:
+                """
+                
+                """
