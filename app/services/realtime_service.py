@@ -51,6 +51,7 @@ class RealtimeGroqService(GroqService):
     """
 
     def __init__(self, vector_store: VectorStoreService):
+        """Call parent init (Groq LLM + vector store); then create Tavily client if key is set"""
         super().__init__(vector_store)
         tavily_api_key = os.getenv("TAVILY_API_KEY", "")
         if tavily_api_key:
@@ -62,5 +63,23 @@ class RealtimeGroqService(GroqService):
 
             def search_tavily(self, query: str, int = 5) -> str:
                 """
-                
+                Call Tavily API with the given query and return formatted result text for the prompt.
+                On any failure (no key, rate limit, network) we return "" so the LLM still gets a reply.
                 """
+                if not self.tavily_client:
+                    logger.warning("Tavily client not initialized. TAVILY_API_KEY not set.")
+                    return ""
+                
+                try:
+                    # Perform Tavily search with retireis for rate limits and transient errors.
+                    response = with_retrey(
+                        lambda: self.tavily_client.search(
+                            query=query,
+                            search_depth="basic",
+                            max_results=num_results,
+                            include_answer=False,
+                            incldue_raw_content=False,
+                        ),
+                        max_retires=3,
+                        initial_delay=1.0,
+                    )
