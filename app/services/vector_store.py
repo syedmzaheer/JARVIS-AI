@@ -18,7 +18,7 @@ Embeddings run locally (sentence-transformers); no extra API key. Groq and Realt
 call get_retriever() for every request to get context.
 """
 
-import Json
+import json
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -49,7 +49,7 @@ class VectorStoreService:
     and provides a retriever to fetch the k most relevant chunks for a query.
     """
 
-    
+
     def __init__(self):
         """Create the embedding model (local) and text splitter; vector_store is set in create_vector_store()."""
         # Embeddings run locally (no API key); used to convert text into vectors for similarity search.
@@ -77,5 +77,66 @@ class VectorStoreService:
                     if content:
                         documents.append(Document(page_content=content, metadata={"source": str(file_path.name)}))
             except Exception as e:
-                logger.warrning(f"Couls not load learning data file %s %s", file_path, e)
+                logger.warning(f"Could not load learning data file {file_path}: {e}")
         return documents
+    
+    def load_chat_history(self) -> List[Document]:
+        """Load all .json files in database/chats_data/; turn each into one Document (User:/Assistant: lines)."""
+        documents = []
+        for file_path in list(CHATS_DATA_DIR.glob("*.json")):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    chat_data = json.load(f)
+                messages = chat_data.get("messages", [])
+                # Format as "User: ...\nAssistant: ..." so the retriver can match past conversations.
+                chat_content = "\n".join([
+                    f"User: {msg.get('content', '')}" if msg.get("role") == "user" 
+                    else f"Assistant: {msg.get('content', '')}"
+                    for msg in messages
+                ])
+                if chat_content.strip():
+                    documents.append(Document(page_content=chat_content, metadata={"source": str(file_path.stem)}))
+            except Exception as e:
+                logger.warning("Could not load chats history file %s %s", file_path, e)
+        return documents
+    
+    # ==========================================================================================================================
+    # BUILD AND SAVE FAISS INDEX
+    # ==========================================================================================================================
+
+    def create_vector_store(self) -> None:
+        """
+        Load learning_data + chats_data, chunk, embed, build FAISS index, save to disk.
+        Called once at startup. If there are no documents we create a tiny placeholder index.
+        """
+        learning_docs = self.load_learning_data()
+        chat_docs = self.load_chat_history()
+        all_documents = learning_docs + chat_docs
+
+        if not all_documents:
+            # Placeholder so get_retriever() never fails; returns this single chunk for any query.
+            self.vector_store = FAISS.from_texts(["No data available yet."], self.embeddings)
+        else:
+            chunks = self.text_splitter.split_documents(all_documents)
+            self.vector_store = FAISS.from_documents(chunks, self.embeddings)
+
+        self.save_vector_store()
+        return self.vector_store
+    
+    def save_vector_store(self):
+        """Write the current FAISS index to database/vector_store/. On error we only log."""
+        if self.vector_store:
+            try:
+                self.vector_store.save_local(str(VECTOR_STORE_DIR))
+            except Exception as e:
+                logger.error("Failed to save vector store to disk: %s", e)
+
+    # ==========================================================================================================================
+    # RETRIEVER FOR CONTEXT 
+    # ==========================================================================================================================
+
+    def get_retriever(self, k: int = 10):
+        """Return a retriever that fetches the k most similar chunks for a query string."""
+        if not self.vector_store:
+            raise RuntimeError("Vector store not initialized. This should not happen")
+        return self.vector_store.as_retriever(search_kwargs={"k": k})
