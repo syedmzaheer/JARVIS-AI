@@ -83,3 +83,86 @@ class RealtimeGroqService(GroqService):
                         max_retires=3,
                         initial_delay=1.0,
                     )
+
+                    results = response.get("results", [])
+
+                    if not results:
+                        logger.warrning("No Tavily search results found for query: (query)")
+                        return ""
+                    
+                    # Format search results as text for the system prompt.
+                    formatted_results = f"Search results for '{query}'\n[start]\n"
+
+                    for i, result in enumerate (results[:num_results], 1):
+                        title = result.get('title', 'No title')
+                        content = result.get('content', 'No description') 
+                        url = result.get('url', '')
+
+                        formatted_results += f"Title: {title}\n"
+                        formatted_results += f"Description: {content}\n"
+                        if url:
+                            formatted_results += f"URL: {url}\n"
+                        formatted_results += "\n"
+                    
+                    formatted_results += "[end]"
+
+                    logger.info(f"Tavily search completed for query: {query} ({len (results)} results)")
+                    return formatted_results
+                
+                except Exception as e:
+                    #If search fails (Network error, rate limit, etc), log and return empty
+                    #The AI will still respond using its knowledge without using real time data.
+                    logger.error(f"Error performing Tavily: {e}")
+                    return ""
+                    
+            def get_response(self, question: str, chat_history: Optional [List[tuple]]= None) -> str:
+                """
+                Run Tavily search for the question, add results to the system message, then call Groq 
+                via the parent's _invoke_11m (same multi-key round-robin and fallback as general chat).
+                """
+                try:
+                    logger.info(f"Searching Tavily for: {question}") 
+                    search_results = self.search_tavily (question, num_results=5)
+
+                    # Retrieve context from vector store (learning data + past chats).
+                    # If retrieval fails, use empty context so the LLM still answers (e.g. with Tavily results). 
+                    context = ""
+                    try:
+                        retriever = self.vector_store_service.get_retriever (k=10)
+                        context_docs = retriever.invoke(question)
+                        context = "\n".join([doc.page_content for doc in context_docs]) if context_docs else ""
+                    except Exception as retrieval_err:
+                        logger.warning("Vector store retrieval failed, using empty context: %s", retrieval_err)
+
+                    # Build system message: personality + time + Tavily results + retrieved context. 
+                    time_info = get_time_information()
+                    system_message = JARVIS_SYSTEM_PROMPT + "\n\nCurrent time and date: {time_info}"
+                    
+                    if search_results:
+                        escaped_search_results = escape_curly_braces(search_results)
+                        system_message += f"\n\nRecent search results: \n{escaped_search_results}"
+                    
+                    if context:
+                        escaped_context = escape_curly_braces(context)
+                        system_message += f"\n\nRelevant context from your learning data and past conversations: \n{escaped_context}"
+                    
+                    prompt = ChatPromptTemplate.from_messages([
+                        ("system", system_message),
+                        MessagesPlaceholder(variable_name="history"),
+                        ("human", "{question}"),
+                    ])
+                    messages = []
+                    if chat_history:
+                        for human_msg, ai_msg in chat_history:
+                            messages.append(HumanMessage(content=human_msg))
+                            messages.append(AISystemMessage(content=ai_msg))
+
+                    # Uses same round-robin and fallback as general chat: newxt key one-by-one, try next on failure.
+                    response_content = self._invoke_llm(prompt, messages, question)
+                    logger.info(f"Realtime response generated for:{question}")
+                    return response_content
+                
+                except Exception as e:
+                    logger.error(f"Error in realtime get_response: {e}", exc_info=True)
+                    # Re_rasie so main.py can return 429 (rate limit) or 500 consistently with general chat.
+                    raise
