@@ -61,4 +61,33 @@ from langchain_community.vectorstores import FAISS
 # LOGGING
 # ==========================================================================================
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)-8s | %(name)-20s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("J.A.R.V.I.S")
 
+
+# ==========================================================================================
+# GLOBAL SERVICE REFERENCES
+# ==========================================================================================
+# Set during startup (lifespan) and used by all route handlers.
+# Stored as globals so async endpoints can access the same service instances. 
+
+vector_store_service: VectorStoreService = None
+groq_service: GroqService = None
+realtime_service: RealtimeGroqService = None
+chat_service: ChatService = None
+
+def print_title():
+    title = r"""
+                     ██╗        █████╗        ██████╗       ██╗   ██╗      ██╗       ███████╗   
+                     ██║       ██╔══██╗       ██╔══██╗      ██║   ██║      ██║       ██╔════╝   
+                     ██║       ███████║       ██████╔╝      ██║   ██║      ██║       ███████╗   
+                ██   ██║       ██╔══██║       ██╔══██╗      ╚██╗ ██╔╝      ██║       ╚════██║   
+                ╚█████╔╝  ██╗  ██║  ██║  ██╗  ██║  ██║  ██╗  ╚████╔╝  ██╗  ██║  ██╗  ███████║ ██╗
+                 ╚════╝   ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝   ╚═══╝   ╚═╝  ╚═╝  ╚═╝  ╚══════╝ ╚═╝
+                                                                     
+    """
+    print(title)
