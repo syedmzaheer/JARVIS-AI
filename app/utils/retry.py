@@ -40,3 +40,15 @@ def with_retry(
             last_exception = e
             if attempt == max_retries - 1:
                 raise
+            logger.warning(
+                "Attempt %s %s failed (%s). Retrying in %.1fs: %s",
+                attempt + 1,
+                max_retries,
+                fn.__name__ if hasattr(fn, "__name__") else "call",
+                delay,
+                e,    
+            )
+            time.sleep(delay)
+            delay *= 2 # Exponential backoff: 1s, 2s, 4s, ...
+
+    raise last_exception
