@@ -98,6 +98,55 @@ def print_title():
 # ======================================================================================================
 
 
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    
+async def lifespan (app: FastAPI):
+  """
+  Application lifespan manager handles startup and shutdown.
+
+  This function manages the application's lifecycle:
+  -  STARTUP: Initializes all services in the correct order
+    1. VectorStoreService: Creates FAISS index from learning data and chat history 
+    2. GroqService: Sets up general chat AI service
+    3. RealtimeGroqService: Sets up realtime chat with Tavily search
+    4. ChatService: Manages chat sessions and conversations
+  - RUNTIME: Application runs normally
+  - SHUTDOWN: Saves all active chat sessions to disk
+
+  The services are initialized in this specific order because:
+  - VectorStoreService must be created first (used by GroqService)
+  - GroqService must be created before RealtimeGroqService (it inherits from it)
+  - ChatService needs both GroqService and RealtimeGroqService
+  All services are stored as global variables so they can be accessed by API endpoints.
+  """
+
+  global vector_store_service, groq_service, realtime_service, chat_service
+
+  print_title()
+  logger.info("=" * 60)
+  logger.info("J.A.R.V.I.S. - Starting UP...")
+  logger.info("=" * 60)
+
+
+  
+  try:
+    # Initialize vector store service
+    logger.info("Initializing vector store service...")
+    vector_store_service = VectorStoreService()
+    vector_store_service.create_vector_store()
+    logger.info("Vector store initialized successfully")
+
+    # Initialize Groq service (general chat)
+    logger.info("Initializing Groq service (general queries)...") 
+    groq_service = GroqService(vector_store_service) 
+    logger.info("Groq service initialized successfully")
+
+    # Initialize Realtime Groq service (with Tavily search)
+    logger.info("Initializing Realtime Groq service (with Tavily search)...") 
+    realtime_service = RealtimeGroqService (vector_store_service) 
+    logger.info("Realtime Groq service initialized successfully")
+
+    # Initialize chat service
+    logger.info("Initializing chat service...")
+    chat_service = ChatService (groq_service, realtime_service) 
+    logger.info("Chat service initialized successfully")
