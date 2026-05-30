@@ -179,4 +179,35 @@ async def lifespan (app: FastAPI):
         raise
     
 
-    
+
+# ======================================================================================================
+# FASTAPI APP AND CORS
+# ======================================================================================================
+# Lifespan runs once at startup (builds services) and once at shutdoen (save sessions).
+
+app = FastAPI(
+    title="J.A.R.V.I.S. API",
+    description="Just A Rather Very Intelligent System"
+    lifespan=lifespan
+)
+
+# Allow any origin so a frontend on another port or device can call this API without CORS errors.
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_Creddentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ======================================================================================================
+# API ENDPOINTS
+# ======================================================================================================
+
+@app.get("/")
+async def root():
+    """Return the API name and a short description of each endpoint (for discovery)."""
+    return {
+        "message":
+    }
