@@ -173,3 +173,10 @@ async def lifespan (app: FastAPI):
           for session_id in list (chat_service.sessions.keys()):
               chat_service.save_chat_session(session_id)
       logger.info("All sessions saved. Goodbye!")
+
+    except Exception as e:
+        logger.error(f"Fatal error during startup: {e}", exc_info=True)
+        raise
+    
+
+    
