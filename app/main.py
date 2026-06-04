@@ -183,7 +183,7 @@ async def lifespan (app: FastAPI):
 # ======================================================================================================
 # FASTAPI APP AND CORS
 # ======================================================================================================
-# Lifespan runs once at startup (builds services) and once at shutdoen (save sessions).
+# Lifespan runs once at startup (builds services) and once at shutdown (save sessions).
 
 app = FastAPI(
     title="J.A.R.V.I.S. API",
@@ -413,6 +413,7 @@ async def get_chat_history(session_id: str):
 # ================================================================================================
 # STANDALONE RUN (python -m app.main)
 # ================================================================================================
+
 def run():
     """Start the uvicorn server (same as run.py; used if someone does python -m app.main)."""
     uvicorn.run(
