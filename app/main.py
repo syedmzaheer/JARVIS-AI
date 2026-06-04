@@ -294,7 +294,7 @@ async def chat (request: ChatRequest):
     
 
 
-@app.post("/chat/realtime", response_model-ChatResponse) 
+@app.post("/chat/realtime", response_model=ChatResponse) 
 async def chat_realtime (request: ChatRequest):
     """
     Realtime chat endpoint send a message to J.A.R.V.I.S with Tavily web search.
@@ -334,5 +334,37 @@ async def chat_realtime (request: ChatRequest):
         "message": "What's the latest AI news?",
         "session_id": "optional-session-id"
     }
-    
+
+    RESPONSE:
+    {
+        "response": "Based on recent search results...",
+        "session_id": "session-id-here"
+    }
+
+    NOTE: Requires TAVILY_API_KEY to be set in .env file. If not set, realtime mode 
+    will not be available and will return a 503 error.
     """
+    if not chat_service:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+
+    if not realtime_service:
+        raise HTTPException(status_code=503, detail="Realtime service not initialized")
+    
+    try:
+
+        session_id = chat_service.get_or_create_session(request.session_id)
+        # Realtime: Tavily search first, then Groq with search results + context 
+        response_text = chat_service.process_realtime_message(session_id, request.message)
+        chat_service.save_chat_session (session_id)
+        return ChatResponse(response=response_text, session_id=session_id) 
+    except ValueError as e:
+        logger.warning(f"Invalid session_id: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        if _is_rate_limit_error(e):
+            logger.warning (f"Rate limit hit: {e}")
+            raise HTTPException(status_code=429, detail=RATE_LIMIT_MESSAGE)
+        logger.error(f"Error processing realtime chat: {e}", exc_info=True)
+        raise HTTPException (status_code=500, detail=f"Error processing chat: {str(e)}")
+    
+
