@@ -242,4 +242,97 @@ async def chat (request: ChatRequest):
     - Historical information
     - General knowledge queries
     - Questions that don't require current/realtime information
+    
+    HOW IT WORKS:
+    1. Recieves user message and optional session_id  
+    2. Gets or creates a chat session
+    3. Processes message through GroqService (pure LLM, no web search)
+    4. Retrieves context from user data files and past conversations
+    5. Generates response using Groq AI
+    6. Saves session to disk
+    7. Returns response and session_id
+
+    SESSION MANAGEMENT:
+    - If session_id is NOT provided: Server generates a new UUID (server-managed)
+    - If session_id IS provided: Server uses it (loads from disk if exists, creates new if not)
+    - Use the SAME session_id with /chat/realtime to seamlessly switch between modes
+    - Sessions persist across server restarts (loaded from disk)
+
+    REQUEST BODY:
+    {
+        "message": "What is Python?",
+        "session_id": "optional-session-id"
+    }
+    RESPONSE:
+    {
+        "response": "Python is a high-level programming language. 
+        "session_id": "session-id-here"
+    }
+    """
+
+    if not chat_service:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    
+    try:
+        # Get existing session or create a new one (and optionally load from disk). 
+        session_id = chat_service.get_or_create_session (request.session_id)
+        # Process with general chat: no web search; context comes from vector store only.
+        response_text = chat_service.process_message(session_id, request.message)
+        # Save session to disk so it survives restart and can be used by the vector store later.
+        chat_service.save_chat_session(session_id)
+        return ChatResponse(response=response_text, session_id=session_id)
+    except ValueError as e:
+        # Invalid session_id (e.g. path traversal or too long).
+        logger.warning(f"Invalid session_id: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        if _is_rate_limit_error(e):
+            logger.warning(f"Rate limit hit: {e}")
+            raise HTTPException(status_code=429, detail=RATE_LIMIT_MESSAGE)
+        logger.error(f"Error processing chat: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing chat: {str(e)}")
+    
+
+
+@app.post("/chat/realtime", response_model-ChatResponse) 
+async def chat_realtime (request: ChatRequest):
+    """
+    Realtime chat endpoint send a message to J.A.R.V.I.S with Tavily web search.
+    
+    This endpoint uses the realtime chatbot mode which performs web searches via Tavily 
+    before generating a response. It's perfect for:
+    - Current events and news
+    - Recent information
+    - Questions requiring up-to-date data
+    - Anything that needs internet access
+
+    HOW IT WORKS:
+    1. Receives user message and optional session_id
+    2. Gets or creates a chat session (SAME as /chat endpoint)
+    3. Searches Tavily for real-time information (fast, AI-optimized, English-only)
+    4. Retrieves context from user data files and past conversations
+    5. Combines search results with context
+    6. Generates response using Groq AI with all available information
+    7. Saves session to disk
+    8. Returns response and session_id
+
+    IMPORTANT: This uses the SAME chat session as /chat endpoint.
+    - You can use the same session_id for both endpoints
+    - This allows seamless switching between general and realtime modes
+    - Conversation history is shared between both modes
+    - Example: Ask a general question, then ask a realtime question, then another general question 
+      - All in the same conversation context
+    
+    SESSION MANAGEMENT:
+    
+    - Same as /chat endpoint - sessions are shared
+    - If session_id is NOT provided: Server generates a new UUID
+    - If session_id IS provided: Server uses it (loads from disk if exists)
+
+    REQUEST BODY:
+    {
+        "message": "What's the latest AI news?",
+        "session_id": "optional-session-id"
+    }
+    
     """
