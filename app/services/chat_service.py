@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import List, Optional, Dict
 import uuid
 
-from config import CHAT_DATA_DIR, MAX_CHAT_HISTORY_TURNS
+from config import CHATS_DATA_DIR, MAX_CHAT_HISTORY_TURNS
 from app.models import ChatMessage, ChatHistory
 from app.services.groq_service import GroqService
 from app.services.realtime_service import RealtimeGroqService
@@ -69,7 +69,7 @@ class ChatService:
         # Sanitize ID for use in filename (no dashes or spaces)
         safe_session_id = session_id.replace("-", "").replace(" ", "")
         filename = f"chat_{safe_session_id}.json "
-        filepath = CHAT_DATA_DIR / filename
+        filepath = CHATS_DATA_DIR / filename
 
         if not filepath.exists():
             return False
@@ -217,7 +217,7 @@ class ChatService:
         messages = self.sessions[session_id]
         safe_session_id = session_id.replace("-", "").replace(" ", "")
         filename = f"chat_{safe_session_id}.json"
-        filepath = CHAT_DATA_DIR / filename
+        filepath = CHATS_DATA_DIR / filename
         chat_dict = {
             "session_id": session_id,
             "messages": [{"role":msg.role, "content": msg.content} for msg in messages]
