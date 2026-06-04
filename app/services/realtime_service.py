@@ -33,7 +33,7 @@ from app.utils.time_info import get_time_information
 from app.utils.retry import with_retry
 from config import JARVIS_SYSTEM_PROMPT
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AISystemMessage
+from langchain_core.messages import HumanMessage, AIMessage
 
 
 logger = logging.getLogger("J.A.R.V.I.S.")
@@ -155,7 +155,7 @@ class RealtimeGroqService(GroqService):
             if chat_history:
                 for human_msg, ai_msg in chat_history:
                     messages.append(HumanMessage(content=human_msg))
-                    messages.append(AISystemMessage(content=ai_msg))
+                    messages.append(AIMessage(content=ai_msg))
 
             # Uses same round-robin and fallback as general chat: newxt key one-by-one, try next on failure.
             response_content = self._invoke_llm(prompt, messages, question)
