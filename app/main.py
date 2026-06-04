@@ -205,9 +205,41 @@ app.add_middleware(
 # API ENDPOINTS
 # ======================================================================================================
 
+
 @app.get("/")
 async def root():
     """Return the API name and a short description of each endpoint (for discovery)."""
     return {
-        "message":
+        "message": "J.A.R.V.I.S API",
+        "endpoints": {
+            "/chat": "General chat (pure LLM, no web search)",
+            "/chat/realtime": "Realtime chat (with Tavily search)",
+            "/chat/history/{session_id}": "Get chat history",
+            "/health": "System health check"
+        }
     }
+
+
+@app.get("/health")
+async def health():
+    """Return 'healthy' and whether each service (vector_store, groq, realtime, chat) is initialized."""
+    return {
+        "status": "healthy",
+        "vector_store": vector_store_service is not None,
+        "groq_service": groq_service is not None,
+        "realtime_service": realtime_service is not None,
+        "chat_service": chat_service is not None
+    }
+
+
+@app.post("/chat", response_model=ChatResponse) 
+async def chat (request: ChatRequest):
+    """
+    General chat endpoint send a message to J.A.R.V.I.S.
+    This endpoint uses the general chatbot mode which does NOT perform web searches. 
+    It's perfect for:
+    - Conversational questions
+    - Historical information
+    - General knowledge queries
+    - Questions that don't require current/realtime information
+    """
