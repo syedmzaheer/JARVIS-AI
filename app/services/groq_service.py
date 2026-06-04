@@ -32,7 +32,7 @@ Context is only what we retrieve (no full dump of learning data), token usage st
 
 from typing import List, Optional
 from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate, MessagePlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 
 import logging
@@ -209,7 +209,7 @@ class GroqService:
             
             prompt = ChatPromptTemplate.from_messages([
                     ("system", system_message),
-                    MessagePlaceholder(variable_name="history"),
+                    MessagesPlaceholder(variable_name="history"),
                     ("human", "{question}"),
                 ])
             messages = []
