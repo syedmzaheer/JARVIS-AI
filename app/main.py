@@ -187,7 +187,7 @@ async def lifespan (app: FastAPI):
 
 app = FastAPI(
     title="J.A.R.V.I.S. API",
-    description="Just A Rather Very Intelligent System"
+    description="Just A Rather Very Intelligent System",
     lifespan=lifespan
 )
 
@@ -368,3 +368,59 @@ async def chat_realtime (request: ChatRequest):
         raise HTTPException (status_code=500, detail=f"Error processing chat: {str(e)}")
     
 
+
+@app.get("/chat/history/{session_id}")
+async def get_chat_history(session_id: str):
+    """
+    Get chat history for a specific session.
+    This endpoint retrieves all messages from a chat session, including both 
+    general and realtime messages since they share the same session.
+
+    HOW IT WORKS:
+    1. Receives session_id as URL parameter
+    2. Retrieves all messages from that session
+    3. Returns messages in chronological order
+
+    RESPONSE:
+    {
+        "session_id": "session-id",
+        "messages": [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Good day. How may I assist you?"},
+            ...
+        ]
+    }
+
+    NOTE: If session doesn't exist, returns empty messages array.
+    """
+
+    if not chat_service:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+
+    try:
+    # Returns in-memory messages for this session (empty if session not loaded). 
+        messages = chat_service.get_chat_history (session_id)
+        return {
+            "session_id": session_id,
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages]
+    }
+    except Exception as e:
+        logger.error("Error retrieving history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error retrieving history: {str(e)}")
+    
+
+
+# ================================================================================================
+# STANDALONE RUN (python -m app.main)
+# ================================================================================================
+def run():
+    """Start the uvicorn server (same as run.py; used if someone does python -m app.main)."""
+    uvicorn.run(
+        "app.main: app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    )
+if __name__ == "__main__":
+    run()
